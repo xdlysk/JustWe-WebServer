@@ -4,6 +4,7 @@ import android.os.Bundle;
 import android.support.design.widget.FloatingActionButton;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.util.Base64;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -14,13 +15,21 @@ import android.widget.TextView;
 import com.lfk.justwe_webserver.WebServer.Interface.OnLogResult;
 import com.lfk.justwe_webserver.WebServer.Interface.OnPostData;
 import com.lfk.justwe_webserver.WebServer.Interface.OnWebFileResult;
+import com.lfk.justwe_webserver.WebServer.Interface.OnWebResult;
 import com.lfk.justwe_webserver.WebServer.Interface.OnWebStringResult;
 import com.lfk.justwe_webserver.WebServer.WebServer;
 import com.lfk.justwe_webserver.WebServer.WebServerDefault;
 import com.lfk.justweengine.Utils.logger.Logger;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
+
+import com.bytedance.frameworks.core.encrypt.TTEncryptUtils;
 
 public class MainActivity extends AppCompatActivity implements OnLogResult {
     private WebServer server;
@@ -28,6 +37,7 @@ public class MainActivity extends AppCompatActivity implements OnLogResult {
     private ScrollView scrollView;
     private boolean open = false;
 
+    private static int count=100;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -43,30 +53,34 @@ public class MainActivity extends AppCompatActivity implements OnLogResult {
         server.initWebService();
 
 
-        server.apply("/lfk", new OnWebStringResult() {
+        server.apply("/encrypt", new OnWebStringResult() {
             @Override
-            public String OnResult() {
-                return "=======";
+            public String OnResult(HashMap<String, String> hashMap) {
+                try{
+                    String S = hashMap.get("data");
+                    byte[] bs = compress(S);
+                    String es = Base64.encodeToString( TTEncryptUtils.e(bs,bs.length),0);
+                    Logger.e(es);
+                    return es;
+                }catch (Exception ex){
+                    return "";
+                }
             }
         });
 
-        server.apply("/main", new OnWebFileResult() {
+        server.apply("/dencrypt", new OnWebStringResult() {
             @Override
-            public File returnFile() {
-                return new File(WebServerDefault.WebServerFiles + "/" + "welcome.html");
+            public String OnResult(HashMap<String, String> hashMap) {
+                try{
+                    String os = hashMap.get("data");
+                    byte[] bs = Base64.decode(os,0);
+                    byte[] dbs = TTEncryptUtils.d(bs,bs.length);
+                    return uncompress(dbs);
+                }catch (Exception ex){
+                    return "";
+                }
             }
         });
-
-
-        server.apply("/lfkdsk", new OnPostData() {
-            @Override
-            public String OnPostData(HashMap<String, String> hashMap) {
-                String S = hashMap.get("LFKDSK");
-                Logger.e(S);
-                return "=_=";
-            }
-        });
-
 
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
@@ -83,6 +97,28 @@ public class MainActivity extends AppCompatActivity implements OnLogResult {
         });
     }
 
+    public static String uncompress(byte[] bs) throws IOException {
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayInputStream in = new ByteArrayInputStream(bs);
+        GZIPInputStream gunzip = new GZIPInputStream(in);
+        byte[] buffer = new byte[256];
+        int n;
+        while ((n = gunzip.read(buffer))>= 0) {
+            out.write(buffer, 0, n);
+        }
+        // toString()使用平台默认编码，也可以显式的指定如toString(&quot;GBK&quot;)
+        return out.toString();
+    }
+
+    public static byte[] compress(String str) throws IOException {
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        GZIPOutputStream gzip = new GZIPOutputStream(out);
+        gzip.write(str.getBytes());
+        gzip.close();
+        return out.toByteArray();
+    }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -109,6 +145,10 @@ public class MainActivity extends AppCompatActivity implements OnLogResult {
     @Override
     public void OnResult(String log) {
         Log.e("log", log);
+        if(count--<0){
+            textView.setText("");
+            count=100;
+        }
         textView.append(log + "\n");
         scrollView.fullScroll(ScrollView.FOCUS_DOWN);
     }

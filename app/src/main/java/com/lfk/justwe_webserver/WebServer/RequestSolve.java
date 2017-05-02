@@ -4,6 +4,7 @@ import com.lfk.justwe_webserver.WebServer.Interface.OnPostData;
 import com.lfk.justwe_webserver.WebServer.Interface.OnWebFileResult;
 import com.lfk.justwe_webserver.WebServer.Interface.OnWebResult;
 import com.lfk.justwe_webserver.WebServer.Interface.OnWebStringResult;
+import com.lfk.justweengine.Utils.logger.Logger;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -14,7 +15,10 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.Socket;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.util.HashMap;
 
 /**
@@ -59,8 +63,13 @@ public class RequestSolve extends Thread {
                 switch (s.substring(0, 4)) {
                     case "GET ":
                         // get request link
-                        url = s.substring(4, httpHeader);
-                        Servers.getLogResult().OnResult("visiting" + url);
+                        int last0 = s.indexOf('?');
+                        params = new HashMap<>();
+                        if (last0 > 0) {
+                            url = s.substring(4, last0);
+                            getParams(s.substring(last0 + 1, httpHeader));
+                        } else
+                            url = s.substring(4, httpHeader);
                         break;
                     case "POST":
                         int last = s.indexOf('?');
@@ -85,7 +94,7 @@ public class RequestSolve extends Thread {
         OnWebResult result = WebServer.getRule(Url);
         if (result != null) {
             if (result instanceof OnWebStringResult) {
-                returnString(((OnWebStringResult) result).OnResult());
+                returnString(((OnWebStringResult) result).OnResult(params));
             } else if (result instanceof OnWebFileResult) {
                 returnFile(((OnWebFileResult) result).returnFile());
             } else if (result instanceof OnPostData) {
@@ -122,11 +131,7 @@ public class RequestSolve extends Thread {
         try {
             OutputStream o = client.getOutputStream();
             o.write(setType(getHeaderBase(), str.length(), "200 OK").getBytes());
-            for (int i = 0;
-                 i < str.length();
-                 i++) {
-                o.write(str.charAt(i));
-            }
+            o.write(str.getBytes());
             o.close();
             client.close();
         } catch (IOException e) {
@@ -158,12 +163,11 @@ public class RequestSolve extends Thread {
         }
     }
 
-    private void getParams(String url) {
+    private void getParams(String url) throws UnsupportedEncodingException {
         int valueFirst;
         for (String s : url.split("&")) {
             valueFirst = s.indexOf("=");
-            params.put(s.substring(0, valueFirst),
-                    s.substring(valueFirst + 1));
+            params.put(s.substring(0, valueFirst), URLDecoder.decode(s.substring(valueFirst + 1),"UTF-8"));
         }
     }
 
@@ -175,7 +179,7 @@ public class RequestSolve extends Thread {
                 "Content-Type: text/html; charset=iso-8859-1\n\n";
     }
 
-    private String setType(String str, double length, String TYPE) {
+    private String setType(String str, int length, String TYPE) {
         str = str.replace("%code%", TYPE);
         str = str.replace("%length%", "" + length);
         return str;
